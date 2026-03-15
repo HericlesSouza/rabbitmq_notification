@@ -14,7 +14,11 @@ public class NotificationProducer(IConnection connection)
 
     public async Task ProduceAsync(NotificationMessage message)
     {
-        await using var channel = await connection.CreateChannelAsync();
+        var options = new CreateChannelOptions(
+            publisherConfirmationsEnabled: true,
+            publisherConfirmationTrackingEnabled: true);
+
+        await using var channel = await connection.CreateChannelAsync(options);
 
         var queueArgs = new Dictionary<string, object?>
         {
@@ -27,7 +31,7 @@ public class NotificationProducer(IConnection connection)
             durable: true,
             exclusive: false,
             autoDelete: false,
-            arguments: queueArgs           
+            arguments: queueArgs
         );
 
         var json = JsonSerializer.Serialize(message);

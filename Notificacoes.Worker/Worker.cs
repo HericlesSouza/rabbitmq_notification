@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text;
 using System.Text.Json;
 using Notificacoes.Worker.Models;
@@ -22,6 +23,7 @@ public class Worker(IConnection connection, ILogger<Worker> logger) : Background
     private CancellationToken _stoppingToken = default;
     private AsyncEventingBasicConsumer? _consumer;
     private IChannel? _channel;
+    private readonly ConcurrentDictionary<Guid, bool> _processedMessages = new();
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -105,7 +107,7 @@ public class Worker(IConnection connection, ILogger<Worker> logger) : Background
         // 4. Configuração do Consumidor        
         await _channel.BasicQosAsync(
             prefetchSize: 0,
-            prefetchCount: 20,
+            prefetchCount: 3,
             global: false,
             cancellationToken: _stoppingToken);
 
@@ -128,12 +130,20 @@ public class Worker(IConnection connection, ILogger<Worker> logger) : Background
             var message = Encoding.UTF8.GetString(body);
             var notification = JsonSerializer.Deserialize<NotificationMessage>(message);
 
+            if (notification == null) return;
+
+            // 1. Verificação de Idempotência (Check-Before-Act)
+            if (!_processedMessages.TryAdd(notification.Id, true))
+            {
+                logger.LogInformation("Notificação {Id} já processada anteriormente. Descartando.", notification.Id);
+                // Confirma ao RabbitMQ para remover a mensagem da fila
+                await _channel!.BasicAckAsync(deliveryTag: ea.DeliveryTag, multiple: false, cancellationToken: _stoppingToken);
+                return;
+            }
+
             logger.LogInformation("Nova notificação recebida para: {To} | Assunto: {Subject}", notification?.To, notification?.Subject);
 
             // Simulando o tempo de envio de um e-mail real...
-            await Task.Delay(1000, _stoppingToken);
-
-
             if (notification.To.Contains("@"))
                 throw new Exception("Deu ruim!");
 
