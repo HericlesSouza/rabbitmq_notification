@@ -8,9 +8,11 @@ namespace Notificacoes.Api.Messaging;
 public class NotificationProducer(IConnection connection)
 {
     private const string QueueName = "email_notifications_queue";
+    private const string RoutingKeyEmail = "notification.email";
 
     private const string DlxName = "email_notifications_dlx";
-    private const string RoutingKey = "error.email";
+    private const string ExchangeNotification = "notifications_exchange";
+    private const string RoutingKeyDLQ = "error.email";
 
     public async Task ProduceAsync(NotificationMessage message)
     {
@@ -23,8 +25,15 @@ public class NotificationProducer(IConnection connection)
         var queueArgs = new Dictionary<string, object?>
         {
             { "x-dead-letter-exchange", DlxName },
-            { "x-dead-letter-routing-key", RoutingKey }
+            { "x-dead-letter-routing-key", RoutingKeyDLQ }
         };
+
+        await channel.ExchangeDeclareAsync(
+            exchange: ExchangeNotification,
+            type: ExchangeType.Topic,
+            durable: true,
+            autoDelete: false         
+        );
 
         await channel.QueueDeclareAsync(
             queue: QueueName,
@@ -32,6 +41,12 @@ public class NotificationProducer(IConnection connection)
             exclusive: false,
             autoDelete: false,
             arguments: queueArgs
+        );
+
+        await channel.QueueBindAsync(
+            queue: QueueName,
+            exchange: ExchangeNotification,
+            routingKey: RoutingKeyEmail
         );
 
         var json = JsonSerializer.Serialize(message);
@@ -44,8 +59,8 @@ public class NotificationProducer(IConnection connection)
         };
 
         await channel.BasicPublishAsync(
-            exchange: string.Empty,
-            routingKey: QueueName,
+            exchange: ExchangeNotification,
+            routingKey: "notification.email",
             body: body,
             mandatory: true,
             basicProperties: properties

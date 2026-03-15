@@ -10,6 +10,8 @@ namespace Notificacoes.Worker;
 public class Worker(IConnection connection, ILogger<Worker> logger) : BackgroundService
 {
     private const string QueueName = "email_notifications_queue";
+    private const string RoutingKeyEmail = "notification.email";
+    private const string ExchangeNotification = "notifications_exchange";
 
     // Configurações DLQ (Erros Permanentes)
     private const string DlxName = "email_notifications_dlx";
@@ -68,8 +70,8 @@ public class Worker(IConnection connection, ILogger<Worker> logger) : Background
 
         var retryArgs = new Dictionary<string, object?>
         {
-            { "x-dead-letter-exchange", "" }, // A string vazia representa a exchange padrão do RabbitMQ
-            { "x-dead-letter-routing-key", QueueName }, // O CEP de volta é o nome da nossa fila principal!
+            { "x-dead-letter-exchange", ExchangeNotification },
+            { "x-dead-letter-routing-key", RoutingKeyEmail }, // O CEP de volta é o nome da nossa fila principal!
             { "x-message-ttl", 5000 } // A mensagem morre aqui após 5000 ms (5 segundos)
         };
 
@@ -82,12 +84,20 @@ public class Worker(IConnection connection, ILogger<Worker> logger) : Background
             cancellationToken: _stoppingToken
         );
 
-        // 3. Declaração da Fila Principal
         await _channel.QueueBindAsync(
             queue: RetryQueue,
             exchange: RetryExchange,
             routingKey: QueueName,
-            cancellationToken: _stoppingToken);
+            cancellationToken: _stoppingToken
+        );
+
+        // 3. Declaração da Fila Principal
+        await _channel.ExchangeDeclareAsync(
+            exchange: ExchangeNotification,
+            type: ExchangeType.Topic,
+            durable: true,
+            autoDelete: false
+        );
 
         var queueArgs = new Dictionary<string, object?>
         {
@@ -95,14 +105,21 @@ public class Worker(IConnection connection, ILogger<Worker> logger) : Background
             { "x-dead-letter-routing-key", RoutingKey }
         };
 
-        // Declara Fila principal
         await _channel.QueueDeclareAsync(
             queue: QueueName,
             durable: true,
             exclusive: false,
             autoDelete: false,
             arguments: queueArgs,
-            cancellationToken: _stoppingToken);
+            cancellationToken: _stoppingToken
+        );
+
+        await _channel.QueueBindAsync(
+            queue: QueueName,
+            exchange: ExchangeNotification,
+            routingKey: RoutingKeyEmail,
+            cancellationToken: _stoppingToken
+        );
 
         // 4. Configuração do Consumidor        
         await _channel.BasicQosAsync(
@@ -124,11 +141,13 @@ public class Worker(IConnection connection, ILogger<Worker> logger) : Background
 
     private async Task OnMessageReceived(object sender, BasicDeliverEventArgs ea)
     {
+        NotificationMessage? notification = null;
+
         try
         {
             var body = ea.Body.ToArray();
             var message = Encoding.UTF8.GetString(body);
-            var notification = JsonSerializer.Deserialize<NotificationMessage>(message);
+            notification = JsonSerializer.Deserialize<NotificationMessage>(message);
 
             if (notification == null) return;
 
@@ -161,6 +180,9 @@ public class Worker(IConnection connection, ILogger<Worker> logger) : Background
         }
         catch (Exception ex)
         {
+            if (notification != null)
+                _processedMessages.TryRemove(notification.Id, out _);
+
             // --- LÓGICA DE RETRY ---
             const int MaxRetries = 3;
 

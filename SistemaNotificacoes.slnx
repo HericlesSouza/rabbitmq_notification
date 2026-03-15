@@ -1,5 +1,6 @@
 <Solution>
   <Project Path="Notificacoes.Api/Notificacoes.Api.csproj" />
   <Project Path="Notificacoes.Worker/Notificacoes.Worker.csproj" />
+  <Project Path="Notificacoes.WorkerAudit/Notificacoes.WorkerAudit.csproj" />
   <Project Path="Notificacoes.WorkerDLQ/Notificacoes.WorkerDLQ.csproj" />
 </Solution>

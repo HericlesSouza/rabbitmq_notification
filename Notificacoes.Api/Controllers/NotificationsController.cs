@@ -13,7 +13,7 @@ public class NotificationsController(NotificationProducer producer) : Controller
     {
         var message = new NotificationMessage
         {
-            Id = Guid.Parse("e9e7d767-563d-47fb-a2b8-952641bf924c"),
+            Id = Guid.NewGuid(),
             To = request.To,
             Subject = request.Subject,
             Body = request.Body,
