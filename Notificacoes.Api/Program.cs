@@ -1,5 +1,4 @@
-using Notificacoes.Api.Messaging;
-using RabbitMQ.Client;
+using MassTransit;
 using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -7,11 +6,17 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
 
-var factory = new ConnectionFactory { HostName = "localhost" };
-var connection = await factory.CreateConnectionAsync();
-
-builder.Services.AddSingleton(connection);
-builder.Services.AddScoped<NotificationProducer>();
+builder.Services.AddMassTransit(x =>
+{
+    x.UsingRabbitMq((context, cfg) =>
+    {
+        cfg.Host("localhost", "/", h =>
+        {
+            h.Username("guest");
+            h.Password("guest");
+        });
+    });
+});
 
 var app = builder.Build();
 
@@ -21,7 +26,7 @@ if (app.Environment.IsDevelopment())
     app.MapScalarApiReference();
 }
 
-app.UseHttpsRedirection();
+// app.UseHttpsRedirection();
 
 app.MapControllers();
 

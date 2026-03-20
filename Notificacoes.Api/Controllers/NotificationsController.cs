@@ -1,16 +1,18 @@
+using MassTransit;
 using Microsoft.AspNetCore.Mvc;
-using Notificacoes.Api.Messaging;
 using Notificacoes.Api.Models;
 
 namespace Notificacoes.Api.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-public class NotificationsController(NotificationProducer producer) : Controller
+public class NotificationsController(IPublishEndpoint publishEndpoint) : Controller
 {
     [HttpPost]
     public async Task<IActionResult> Post([FromBody] NotificationRequest request)
     {
+        System.Console.WriteLine("chegou");
+
         var message = new NotificationMessage
         {
             Id = Guid.NewGuid(),
@@ -19,8 +21,8 @@ public class NotificationsController(NotificationProducer producer) : Controller
             Body = request.Body,
             CreatedAt = DateTime.UtcNow
         };
-
-        await producer.ProduceAsync(message);
+        
+        await publishEndpoint.Publish(message);
 
         return Accepted(new { message.Id, Status = "Notificação enfileirada com sucesso." });
     }

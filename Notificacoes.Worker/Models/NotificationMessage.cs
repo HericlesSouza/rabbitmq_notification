@@ -1,4 +1,4 @@
-namespace Notificacoes.Worker.Models;
+namespace Notificacoes.Api.Models;
 
 public class NotificationMessage
 {
